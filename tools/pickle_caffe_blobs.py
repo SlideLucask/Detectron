@@ -89,10 +89,11 @@ def normalize_resnet_name(name):
 
 
 def pickle_weights(out_file_name, weights):
-    blobs = {
-        normalize_resnet_name(blob.name): utils.Caffe2TensorToNumpyArray(blob)
-        for blob in weights.protos
-    }
+    #blobs = {
+        #normalize_resnet_name(blob.name): utils.Caffe2TensorToNumpyArray(blob)
+        #for blob in weights.protos
+    #}
+    blobs = {blob.name:utils.Caffe2TensorToNumpyArray(blob) for blob in weights.protos}
     with open(out_file_name, 'w') as f:
         pickle.dump(blobs, f, protocol=pickle.HIGHEST_PROTOCOL)
     print('Wrote blobs:')
@@ -138,7 +139,9 @@ def remove_spatial_bn_layers(caffenet, caffenet_weights):
 
     bn_tensors = []
     for (bn, scl) in zip(bn_layers[0::2], bn_layers[1::2]):
-        assert bn.name[len('bn'):] == scl.name[len('scale'):], 'Pair mismatch'
+        print(len('bn'))
+        print(len('scale'))
+        #assert bn.name[len('bn'):] == scl.name[len('scale'):], 'Pair mismatch'
         blob_out = 'res' + bn.name[len('bn'):] + '_bn'
         bn_mean = np.asarray(bn.blobs[0].data)
         bn_var = np.asarray(bn.blobs[1].data)
