@@ -32,6 +32,11 @@ import logging
 import os
 import sys
 import time
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
 
 from caffe2.python import workspace
 
@@ -47,6 +52,7 @@ import detectron.utils.c2 as c2_utils
 import detectron.utils.vis as vis_utils
 
 c2_utils.import_detectron_ops()
+c2_utils.import_custom_ops()
 
 # OpenCL may be enabled by default in OpenCV3; disable it because it's not
 # thread safe and causes unwanted GPU memory allocations.
@@ -90,6 +96,28 @@ def parse_args():
         parser.print_help()
         sys.exit(1)
     return parser.parse_args()
+
+def save_feature_picture(blob, output_dir, output_name, padsize = 1, padval = 1):
+    n = int(np.sqrt(blob.shape[0]))
+    i = 0
+    for col in range(n):
+        for row in range(n):
+            if row == 0:
+                im = blob[i]
+            else:
+                im = np.concatenate((im, blob[i]), axis=1)
+            i += 1
+        if col == 0:
+            image = im
+            del im
+        else:
+            image = np.concatenate((image, im), axis=0)
+    #cv2.imwrite(os.path.join(output_dir, output_name), image)
+    plt.figure()  
+    plt.imshow(image,cmap='gray')  
+    plt.axis('off')
+    plt.savefig(os.path.join(output_dir, output_name), dpi = 400, bbox_inches = "tight")
+    print(output_name, 'saved', blob.shape[0], blob[0].shape, 'concatenated in', image.shape)
 
 
 def main(args):
@@ -148,3 +176,9 @@ if __name__ == '__main__':
     setup_logging(__name__)
     args = parse_args()
     main(args)
+    blobs = ['conv1', 'pool1', 'res2_2_sum', 'res3_3_sum', 'res4_5_sum', 'res5_2_sum']
+    if blobs != []:
+        for blob_name in blobs:
+            blob = workspace.FetchBlob('gpu_0/'+blob_name)[0]
+            save_feature_picture(blob, 'demo/output', blob_name+'_feature.jpg')
+    

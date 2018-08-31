@@ -1,7 +1,6 @@
 MODEL:
   TYPE: generalized_rcnn
-  CONV_BODY: FPN.add_fpn_ResNet50_conv5_body
-  BACKBONE_NAME: ResNet50
+  CONV_BODY: ResNet_DeConv.add_ResNet50_conv5_body
   NUM_CLASSES: 2
   FASTER_RCNN: True
 NUM_GPUS: 1
@@ -10,8 +9,8 @@ SOLVER:
   LR_POLICY: steps_with_decay
   BASE_LR: 0.001
   GAMMA: 0.1
-  MAX_ITER: 10000
-  STEPS: [0, 4000, 8000]
+  MAX_ITER: 2000
+  STEPS: [0, 800, 1600]
   # Equivalent schedules with...
   # 1 GPU:
   #   BASE_LR: 0.0025
@@ -27,14 +26,11 @@ SOLVER:
   #   STEPS: [0, 7500, 10000]
   # 8 GPUs:
   #   BASE_LR: 0.02
-  #   MAX_ITER: 5000
-  #   STEPS: [0, 40000, 80000]
-FPN:
-  FPN_ON: True
-  MULTILEVEL_ROIS: True
-  MULTILEVEL_RPN: True
-  RPN_ANCHOR_SIZE_INCREASE: 2.
-  RPN_ANCHOR_START_SIZE: 32
+  #   MAX_ITER: 7500
+  #   STEPS: [0, 3750, 5000]
+RPN:
+  #SIZES: (32, 64, 128, 256, 512)
+  STRIDE: 4
 FAST_RCNN:
   ROI_BOX_HEAD: fast_rcnn_heads.add_roi_2mlp_head
   ROI_XFORM_METHOD: RoIAlign
@@ -42,16 +38,14 @@ FAST_RCNN:
   ROI_XFORM_SAMPLING_RATIO: 2
 TRAIN:
   WEIGHTS: pretrained_models/R-50.pkl
-  DATASETS: ('coco_2014_trainval',)
+  DATASETS: ('coco_daofeishi_trainval',)
   SCALES: (800,)
   MAX_SIZE: 1000
   BATCH_SIZE_PER_IM: 256
   RPN_PRE_NMS_TOP_N: 2000  # Per FPN level
   SNAPSHOT_ITERS: 30000
-  IMS_PER_BATCH: 1
-  USE_FLIPPED: False
 TEST:
-  DATASETS: ('coco_2014_test',)
+  DATASETS: ('coco_daofeishi_test',)
   SCALE: 800
   MAX_SIZE: 1000
   NMS: 0.5
@@ -59,5 +53,5 @@ TEST:
   RPN_POST_NMS_TOP_N: 1000
   COCO_EVALUATOR: True
   VOC_EVALUATOR: True
-OUTPUT_DIR: 
-  experiments/output/faster_rcnn_fpn/resnet-50
+OUTPUT_DIR: .
+  experiments/output/faster_rcnn/resnet-50

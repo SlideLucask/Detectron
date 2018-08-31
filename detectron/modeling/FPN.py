@@ -29,6 +29,7 @@ from detectron.utils.c2 import const_fill
 from detectron.utils.c2 import gauss_fill
 from detectron.utils.net import get_group_gn
 import detectron.modeling.ResNet as ResNet
+import detectron.modeling.ResNet_DeConv as ResNet_DeConv
 import detectron.modeling.Inception as Inception
 import detectron.modeling.DenseNet as DenseNet
 import detectron.modeling.MobileNet as MobileNet
@@ -96,6 +97,12 @@ def add_fpn_ResNet152_conv5_P2only_body(model):
         fpn_level_info_ResNet152_conv5,
         P2only=True
     )
+
+def add_fpn_ResNet50D_conv5_body(model):
+    return add_fpn_onto_conv_body(
+        model, ResNet_DeConv.add_ResNet50_conv5_body, fpn_level_info_ResNet50D_conv5
+    )
+
 
 # ---------------------------------------------------------------------------- #
 # FPN with VGG
@@ -642,6 +649,12 @@ def fpn_level_info_ResNet50_conv5():
         spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
     )
 
+def fpn_level_info_ResNet50D_conv5():
+    return FpnLevelInfo(
+        blobs=('res5_2_sum', 'combine5', 'combine4', 'combine3'),
+        dims=(2048, 2048, 1024, 512),
+        spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
+    )
 
 def fpn_level_info_ResNet101_conv5():
     return FpnLevelInfo(
