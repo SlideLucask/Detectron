@@ -42,6 +42,7 @@ Additional backbone architectures may be easily implemented. For more details ab
 - 8/2018: Support custom attentional transition, only on resnet and resnext currently. See the paper https://arxiv.org/abs/1802.10419
 - 8/2018: Two new parameters in yaml file VOC_EVALUATOR and COCO_EVALUATOR to make sure the corresponding evaluators could be applied
 - 8/2018: Support More the state-of-the-art CNN backbones.
+- 9/2018: Support deconvolutional layer in resnet and resnext with FPN
 
 ## License
 
