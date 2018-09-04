@@ -518,7 +518,7 @@ def add_fpn_rpn_outputs(model, blobs_in, dim_in, spatial_scales):
             #  OR
             #  2) training for Faster R-CNN
             # Otherwise (== training for RPN only), proposals are not needed
-            logger.info(cfg.FPN.RPN_ANCHOR_START_SIZE * cfg.FPN.RPN_ANCHOR_SIZE_INCREASE**(lvl - k_min))
+            #logger.info(cfg.FPN.RPN_ANCHOR_START_SIZE * cfg.FPN.RPN_ANCHOR_SIZE_INCREASE**(lvl - k_min))
             lvl_anchors = generate_anchors(
                 stride=2.**lvl,
                 sizes=(cfg.FPN.RPN_ANCHOR_START_SIZE * cfg.FPN.RPN_ANCHOR_SIZE_INCREASE**(lvl - k_min), ),

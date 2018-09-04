@@ -141,6 +141,7 @@ class JsonDataset(object):
         assert os.path.exists(im_path), 'Image \'{}\' not found'.format(im_path)
         entry['image'] = im_path
         entry['flipped'] = False
+        entry['cropped'] = []
         entry['has_visible_keypoints'] = False
         # Empty placeholders
         entry['gt_classes'] = np.empty((0), dtype=np.int32)

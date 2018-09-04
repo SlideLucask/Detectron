@@ -125,9 +125,9 @@ def add_ResNet_convX_body(model, block_counts, freeze_at=0):
         if freeze_at == 5:
             model.StopGradient(s5, s5)
 
-        model.DeconvolutionFusion('res5_'+str(n4-1)+'_sum', 'res4_'+str(n3-1)+'_sum', 'combine5', 2048, 1024, method='EltwisePROD')
-        model.DeconvolutionFusion('res4_'+str(n3-1)+'_sum', 'res3_'+str(n2-1)+'_sum', 'combine4', 1024, 512, method='EltwisePROD')
-        s = model.DeconvolutionFusion('res3_'+str(n2-1)+'_sum', 'res2_'+str(n1-1)+'_sum', 'combine3', 512, 256, method='EltwisePROD')
+        model.DeconvolutionFusion('res5_'+str(n4-1)+'_sum', 'res4_'+str(n3-1)+'_sum', 'combine5', 2048, 1024, method='EltwiseConcat')
+        model.DeconvolutionFusion('res4_'+str(n3-1)+'_sum', 'res3_'+str(n2-1)+'_sum', 'combine4', 1024, 512, method='EltwiseConcat')
+        s = model.DeconvolutionFusion('res3_'+str(n2-1)+'_sum', 'res2_'+str(n1-1)+'_sum', 'combine3', 512, 256, method='EltwiseConcat')
         #s = model.DeconvolutionFusion('res2_2_sum', 'pool1', 'combine2', 256, 128)
 
         return s, 512, 1. / 4.

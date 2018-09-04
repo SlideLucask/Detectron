@@ -49,6 +49,7 @@ import signal
 import threading
 import time
 import uuid
+import random
 
 from caffe2.python import core, workspace
 
@@ -91,9 +92,12 @@ class RoIDataLoader(object):
         self.coordinator = Coordinator()
 
         self._output_names = get_minibatch_blob_names()
+        self._cur_loss = {}
+        self._cur_img = 0
         self._shuffle_roidb_inds()
         self.create_threads()
-        self._cur_loss = []
+        self.first = True
+        
 
     def minibatch_loader_thread(self):
         """Load mini-batches and put them onto the mini-batch queue."""
@@ -137,10 +141,8 @@ class RoIDataLoader(object):
 
     def _shuffle_roidb_inds(self):
         """Randomly permute the training roidb. Not thread safe."""
-        new_roidb = self._roidb
-        new_perm = self._perm
-        #pos = self._cur_loss / sum(self._cur_loss)
-        if cfg.TRAIN.ASPECT_GROUPING and cfg.TRAIN.IMS_PER_BATCH != 1:
+        #new_roidb = self._roidb
+        if cfg.TRAIN.ASPECT_GROUPING and not cfg.TRAIN.ENHANCE_STRATEGY:
             widths = np.array([r['width'] for r in self._roidb])
             heights = np.array([r['height'] for r in self._roidb])
             horz = (widths >= heights)
@@ -157,11 +159,29 @@ class RoIDataLoader(object):
             row_perm = np.random.permutation(np.arange(inds.shape[0]))
             inds = np.reshape(inds[row_perm, :], (-1, ))
             self._perm = inds
-        else:
+        elif self._cur_loss == {} or self.first == True or len(self._perm) < int(len(self._roidb) * 0.3):
             self._perm = np.random.permutation(np.arange(len(self._roidb)))
+            self.first = False
+        else:
+            inds = []
+            total_loss = sum(self._cur_loss.values())
+            loss_thresh = sorted(self._cur_loss.values())[int(len(self._roidb) * 0.1)]
+            for k,v in self._cur_loss.items():
+                #print(100 * self._cur_loss[k] / total_loss)
+                if v < loss_thresh:
+                    del self._cur_loss[k]
+                    continue
+                inds.append(k) 
+                #if random.uniform(1,100) < 100 * self._cur_loss[k] / total_loss:
+                    #inds.append(k)
+                
+            self._perm = inds
+            random.shuffle(self._perm)
+        #print(len(self._perm))
+
         self._perm = deque(self._perm)
         self._cur = 0
-        self._cur_loss = []
+        self._cur_loss = {}
 
     def _get_next_minibatch_inds(self):
         """Return the roidb indices for the next minibatch. Thread safe."""
@@ -171,6 +191,7 @@ class RoIDataLoader(object):
             # each time. If the length of _perm is not divisible by
             # IMS_PER_BATCH, then we end up wrapping around the permutation.
             db_inds = [self._perm[i] for i in range(cfg.TRAIN.IMS_PER_BATCH)]
+            self._cur_img = db_inds
             self._perm.rotate(-cfg.TRAIN.IMS_PER_BATCH)
             self._cur += cfg.TRAIN.IMS_PER_BATCH
             if self._cur >= len(self._perm):

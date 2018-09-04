@@ -94,12 +94,17 @@ def generalized_rcnn(model):
 
 def rfcn(model):
     # TODO(rbg): fold into build_generic_detection_model
-    return build_generic_rfcn_model(model, get_func(cfg.MODEL.CONV_BODY))
+    return build_generic_rfcn_model(model, 
+        get_func(cfg.MODEL.CONV_BODY), 
+        freeze_conv_body=cfg.TRAIN.FREEZE_CONV_BODY
+        )
 
 
 def retinanet(model):
     # TODO(rbg): fold into build_generic_detection_model
-    return build_generic_retinanet_model(model, get_func(cfg.MODEL.CONV_BODY))
+    return build_generic_retinanet_model(model, 
+        get_func(cfg.MODEL.CONV_BODY), 
+        )
 
 
 # ---------------------------------------------------------------------------- #
@@ -345,21 +350,48 @@ def _add_roi_keypoint_head(
     return loss_gradients
 
 
-def build_generic_rfcn_model(model, add_conv_body_func, dim_reduce=None):
+def build_generic_rfcn_model(model, add_conv_body_func, dim_reduce=None, freeze_conv_body=False):
     # TODO(rbg): fold this function into build_generic_detection_model
     def _single_gpu_build_func(model):
         """Builds the model on a single GPU. Can be called in a loop over GPUs
         with name and device scoping to create a data parallel model."""
-        blob, dim, spatial_scale = add_conv_body_func(model)
+        blob_conv, dim_conv, spatial_scale_conv = add_conv_body_func(model)
+        head_loss_gradients = {
+            'rpn': None,
+            'box': None,
+            'mask': None,
+            'keypoints': None,
+            'classification': None
+        }
         if freeze_conv_body:
             for b in c2_utils.BlobReferenceList(blob_conv):
                 model.StopGradient(b, b)
         if not model.train:
             model.conv_body_net = model.net.Clone('conv_body_net')
-        rfcn_heads.add_rfcn_outputs(model, blob, dim, dim_reduce, spatial_scale)
+        if cfg.RPN.RPN_ON:
+            # Add the RPN head
+            head_loss_gradients['rpn'] = rpn_heads.add_generic_rpn_outputs(
+                model, blob_conv, dim_conv, spatial_scale_conv
+            )
+        if cfg.FPN.FPN_ON:
+            # After adding the RPN head, restrict FPN blobs and scales to
+            # those used in the RoI heads
+            blob_conv, spatial_scale_conv = _narrow_to_fpn_roi_levels(
+                blob_conv, spatial_scale_conv
+            )
+        rfcn_heads.add_rfcn_outputs(model, blob_conv, dim_conv, dim_reduce, spatial_scale_conv)
         if model.train:
-            loss_gradients = fast_rcnn_heads.add_fast_rcnn_losses(model)
-        return loss_gradients if model.train else None
+            head_loss_gradients['box'] = fast_rcnn_heads.add_fast_rcnn_losses(model)
+        if model.train:
+            loss_gradients = {}
+            for lg in head_loss_gradients.values():
+                if lg is not None:
+                    loss_gradients.update(lg)
+            return loss_gradients
+        else:
+            return None
+            #loss_gradients = fast_rcnn_heads.add_fast_rcnn_losses(model)
+        #return loss_gradients if model.train else None
 
     optim.build_data_parallel_model(model, _single_gpu_build_func)
     return model

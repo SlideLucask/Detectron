@@ -114,6 +114,16 @@ def _get_image_blob(roidb):
             'Failed to read image \'{}\''.format(roidb[i]['image'])
         if roidb[i]['flipped']:
             im = im[:, ::-1, :]
+        if roidb[i]['cropped'] != []:
+            width = im.shape[1]
+            height = im.shape[0]
+            crop_size = cfg.TRAIN.CROPPED_SIZE
+            crop_index = roidb[i]['cropped'].index(1)
+            xmin = int(height / crop_size * int(round(i/2)))
+            xmax = int(xmin+height / crop_size)
+            ymin = int(width / crop_size * int(round(i/2)))
+            ymax = int(ymin + width / crop_size)
+            im = im[xmin:xmax, ymin:ymax,:]
         target_size = cfg.TRAIN.SCALES[scale_inds[i]]
         im, im_scale = blob_utils.prep_im_for_blob(
             im, cfg.PIXEL_MEANS, target_size, cfg.TRAIN.MAX_SIZE

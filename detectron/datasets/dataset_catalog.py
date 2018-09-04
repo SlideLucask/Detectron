@@ -38,6 +38,147 @@ ROOT_DIR = 'root_dir'
 
 # Available datasets
 DATASETS = {
+    'coco_jiaduo_trainval': {
+        IM_DIR:
+            _DATA_DIR + '/jiaduo_88670/VOCdevkit2007/VOC2007/JPEGImages/JPEGImages',
+        ANN_FN:
+            _DATA_DIR + '/jiaduo_88670/VOCdevkit2007/VOC2007/annotations/trainval.json'
+    },
+    'coco_jiaduo_test': {
+        IM_DIR:
+            _DATA_DIR + '/jiaduo_88670/VOCdevkit2007/VOC2007/JPEGImages/JPEGImages',
+        ANN_FN:
+            _DATA_DIR + '/jiaduo_88670/VOCdevkit2007/VOC2007/annotations/test.json',
+        ROOT_DIR:
+            _DATA_DIR + '/jiaduo_88670/VOCdevkit2007/VOC2007'
+    },
+    'coco_jiaduo_7class_trainval': {
+        IM_DIR:
+            _DATA_DIR + '/jiaduo_7class/VOC2007/JPEGImages',
+        ANN_FN:
+            _DATA_DIR + '/jiaduo_7class/VOC2007/annotations/trainval.json',
+        DEVKIT_DIR:
+            _DATA_DIR + '/jiaduo_7class'
+    },
+    'coco_jiaduo_7class_test': {
+        IM_DIR:
+            _DATA_DIR + '/jiaduo_7class/VOC2007/JPEGImages',
+        ANN_FN:
+            _DATA_DIR + '/jiaduo_7class/VOC2007/annotations/test.json',
+        DEVKIT_DIR:
+            _DATA_DIR + '/jiaduo_7class'
+    },
+    'coco_jiaduo_mintrainval': {
+        IM_DIR:
+            _DATA_DIR + '/jiaduo_28958/jiaduo/VOC2007/JPEGImages',
+        ANN_FN:
+            _DATA_DIR + '/jiaduo_28958/jiaduo/VOC2007/annotations/trainval.json'
+    },
+    'coco_jiaduo_mintest': {
+        IM_DIR:
+            _DATA_DIR + '/jiaduo_28958/jiaduo/VOC2007/JPEGImages',
+        ANN_FN:
+            _DATA_DIR + '/jiaduo_28958/jiaduo/VOC2007/annotations/test.json'
+    },
+    'coco_chimeibing_trainval': {
+        IM_DIR:
+            _DATA_DIR + '/data_chimeibing_sample/JPEG',
+        ANN_FN:
+            _DATA_DIR + '/data_chimeibing_sample/annotations/train.json'
+    },
+    'coco_chimeibing_test': {
+        IM_DIR:
+            _DATA_DIR + '/data_chimeibing_sample/JPEG',
+        ANN_FN:
+            _DATA_DIR + '/data_chimeibing_sample/annotations/test.json'
+    },
+    'coco_chimeibing_2class_trainval': {
+        IM_DIR:
+            _DATA_DIR + '/data_chimeibing_sample/JPEG',
+        ANN_FN:
+            _DATA_DIR + '/data_chimeibing_sample/annotations_2class/trainval.json'
+    },
+    'coco_chimeibing_2class_test': {
+        IM_DIR:
+            _DATA_DIR + '/data_chimeibing_sample/JPEG',
+        ANN_FN:
+            _DATA_DIR + '/data_chimeibing_sample/annotations_2class/test.json',
+        ROOT_DIR:
+            _DATA_DIR + '/data_chimeibing_sample'
+    },
+    'coco_daofeishi_trainval': {
+        IM_DIR:
+            _DATA_DIR + '/data_daofeishi/coco/coco_train2014',
+        ANN_FN:
+            _DATA_DIR + '/data_daofeishi/coco/annotations/instances_train2014.json'
+    },
+    'coco_daofeishi_test': {
+        IM_DIR:
+            _DATA_DIR + '/data_daofeishi/coco/coco_val2014',
+        ANN_FN:
+            _DATA_DIR + '/data_daofeishi/coco/annotations/instances_val2014.json',
+        ROOT_DIR:
+            _DATA_DIR + '/data_daofeishi/coco'
+    },
+    'coco_rice_trainval': {
+        IM_DIR:
+            _DATA_DIR + '/VOC2007_Rice/JPEGImages',
+        ANN_FN:
+            _DATA_DIR + '/VOC2007_Rice/annotations/trainval.json'
+    },
+    'coco_rice_test': {
+        IM_DIR:
+            _DATA_DIR + '/VOC2007_Rice/JPEGImages',
+        ANN_FN:
+            _DATA_DIR + '/VOC2007_Rice/test.json'
+    },
+    'coco_yachong_trainval': {
+        IM_DIR:
+            _DATA_DIR + '/data_yachong/JPEGImages',
+        ANN_FN:
+            _DATA_DIR + '/data_yachong/coco/annotations/trainval.json'
+    },
+    'coco_yachong_test': {
+        IM_DIR:
+            _DATA_DIR + '/data_yachong/JPEGImages',
+        ANN_FN:
+            _DATA_DIR + '/data_yachong/coco/annotations/test.json',
+        ROOT_DIR:
+            _DATA_DIR + '/data_yachong'
+    },
+    'coco_classification_3class_train': {
+        IM_DIR:
+            _DATA_DIR + '/data_classification/train',
+        ANN_FN:
+            _DATA_DIR + '/data_classification/annotations/train.json'
+    },
+    'coco_classification_3class_val': {
+        IM_DIR:
+            _DATA_DIR + '/data_classification/val',
+        ANN_FN:
+            _DATA_DIR + '/data_classification/annotations/val.json',
+        ROOT_DIR:
+            _DATA_DIR + '/data_classification'
+    },
+    'coco_wheatpest_trainval': {
+        IM_DIR:
+            _DATA_DIR + '/data_xiaomai5class/JPEGImages',
+        ANN_FN:
+            _DATA_DIR + '/data_xiaomai5class/annotations/trainval.json'
+    },
+    'coco_wheatpest_test': {
+        IM_DIR:
+            _DATA_DIR + '/data_xiaomai5class/JPEGImages',
+        ANN_FN:
+            _DATA_DIR + '/data_xiaomai5class/annotations/test.json',
+        ROOT_DIR:
+            _DATA_DIR + '/data_xiaomai5class'
+    },
+
+
+
+
+
     'cityscapes_fine_instanceonly_seg_train': {
         IM_DIR:
             _DATA_DIR + '/cityscapes/images',
@@ -165,19 +306,19 @@ DATASETS = {
     },
     'voc_2007_trainval': {
         IM_DIR:
-            _DATA_DIR + '/data_daofeishi/VOCdevkit2007/VOC2007/JPEGImages',
+            _DATA_DIR + '/VOC2007/JPEGImages',
         ANN_FN:
-            _DATA_DIR + '/data_daofeishi/VOCdevkit2007/VOC2007/annotations/voc_2007_trainval.json',
+            _DATA_DIR + '/VOC2007/annotations/voc_2007_trainval.json',
         DEVKIT_DIR:
-            _DATA_DIR + '/data_daofeishi/VOCdevkit2007'
+            _DATA_DIR + '/VOC2007'
     },
     'voc_2007_test': {
         IM_DIR:
-            _DATA_DIR + '/data_daofeishi/VOCdevkit2007/VOC2007/JPEGImages',
+            _DATA_DIR + '/VOC2007/JPEGImages',
         ANN_FN:
-            _DATA_DIR + '/data_daofeishi/VOCdevkit2007/VOC2007/annotations/voc_2007_test.json',
-        DEVKIT_DIR:
-            _DATA_DIR + '/data_daofeishi/VOCdevkit2007'
+            _DATA_DIR + '/VOC2007/annotations/pascal_test2007.json',
+        ROOT_DIR:
+            _DATA_DIR + '/VOC2007'
     },
     'voc_2012_trainval': {
         IM_DIR:

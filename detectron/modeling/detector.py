@@ -120,8 +120,16 @@ class DetectionModelHelper(cnn.CNNModelHelper):
 
         if method == 'EltwiseSUM':
             self.net.Sum([blob_in_dec + '_deconv_conv_narrow', blob_in_org + '_conv2'], blob_out)
+            self.AffineChannel(blob_out, blob_out, dim=dim_dec)
         if method == 'EltwisePROD':
             self.net.Mul([blob_in_dec + '_deconv_conv_narrow', blob_in_org + '_conv2'], blob_out)
+            self.AffineChannel(blob_out, blob_out, dim=dim_dec)
+        if method == 'EltwiseConcat':
+            self.Concat([blob_in_dec + '_deconv_conv_narrow', blob_in_org + '_conv2'], blob_out + '_concat')
+            self.AffineChannel(blob_out + '_concat', blob_out + '_concat', dim=dim_dec*2)
+            self.Relu(blob_out + '_concat', blob_out + '_concat')
+            self.Conv(blob_out + '_concat', blob_out, dim_dec*2, dim_dec, 3, pad=1,stride=1)
+            self.AffineChannel(blob_out, blob_out, dim=dim_dec)
 
         return self.Relu(blob_out, blob_out)
 
@@ -153,8 +161,8 @@ class DetectionModelHelper(cnn.CNNModelHelper):
         self.Conv(prefix+'_at_conv1', prefix+'_at_conv2', int(dim/2), dim, 1)
         self.Sigmoid(prefix+'_at_conv2', prefix+'_at_factors')
         
-        self.net.Mul([blob_in, prefix+'_at_factors'], prefix+'_mul_factors', broadcast=1)
-        return self.net.Sum([blob_in, prefix+'_mul_factors'], blob_out)
+        return self.net.Mul([blob_in, prefix+'_at_factors'], blob_out, broadcast=1)
+        #return self.net.Sum([blob_in, prefix+'_mul_factors'], blob_out)
 
     def GenerateProposals(self, blobs_in, blobs_out, anchors, spatial_scale):
         """Op for generating RPN porposals.

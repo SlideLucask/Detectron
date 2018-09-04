@@ -77,6 +77,9 @@ class TrainingStats(object):
         self.iter_total_loss = np.sum(
             np.array([self.losses_and_metrics[k] for k in self.model.losses])
         )
+        #print(self.model.roi_data_loader._cur_img)
+        for i in range(len(self.model.roi_data_loader._cur_img)):
+            self.model.roi_data_loader._cur_loss[self.model.roi_data_loader._cur_img[i]] = self.iter_total_loss
         self.smoothed_total_loss.AddValue(self.iter_total_loss)
         self.smoothed_mb_qsize.AddValue(
             self.model.roi_data_loader._minibatch_queue.qsize()

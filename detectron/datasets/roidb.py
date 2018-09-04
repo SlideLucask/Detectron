@@ -49,6 +49,9 @@ def combined_roidb_for_training(dataset_names, proposal_files):
         if cfg.TRAIN.USE_FLIPPED:
             logger.info('Appending horizontally-flipped training examples...')
             extend_with_flipped_entries(roidb, ds)
+        if cfg.TRAIN.USE_CROPPED:
+            logger.info('Appending cropped training examples...')
+            extend_with_cropped_entries(roidb, ds)
         logger.info('Loaded dataset: {:s}'.format(ds.name))
         return roidb
 
@@ -109,6 +112,72 @@ def extend_with_flipped_entries(roidb, dataset):
         flipped_entry['flipped'] = True
         flipped_roidb.append(flipped_entry)
     roidb.extend(flipped_roidb)
+
+def extend_with_cropped_entries(roidb, dataset):
+    """crop each entry in the given roidb by 2x2 or 4x4 grid and return a new roidb that is the
+    concatenation of the original roidb and the cropped entries.
+
+    "cropping" an entry means that that image and associated metadata (e.g.,
+    ground truth boxes and object proposals) are cropped by defined grid.
+    """
+    crop_size = cfg.TRAIN.CROPPED_SIZE
+    cropped_roidb = []
+    id = roidb[-1]['id'] + 1
+    for i in range(crop_size ** 2):
+        for entry in roidb:
+            width = entry['width']
+            height = entry['height']
+            cropped_entry = {}
+            if not cfg.MODEL.CLASSIFICATION:
+                new_image = [0] * 4
+                new_image[0] = width / crop_size * int(round(i/2))
+                new_image[1] = height / crop_size * int(round(i/2))
+                new_image[2] = width / crop_size * int(round(i/2)+1)
+                new_image[3] = height / crop_size * int(round(i/2)+1)
+                boxes = entry['boxes'].copy()
+                new_boxes = []
+                indexes = []
+                for index,box in enumerate(boxes):
+                    if _box_in_cropped_image(box, new_image):
+                        box[0] -= new_image[0]
+                        box[1] -= new_image[1]
+                        box[2] -= new_image[0]
+                        box[3] -= new_image[1]
+                        assert (box > 0).all()
+                        new_boxes.append(box)
+                        indexes.append(index)
+
+                cropped_entry['boxes'] = np.array(new_boxes)
+                cropped_entry['width'] = width / crop_size
+                cropped_entry['height'] = height / crop_size
+                cropped_entry['gt_classes'] = entry['gt_classes'][indexes]
+                cropped_entry['max_classes'] = entry['max_classes'][indexes]
+                cropped_entry['seg_areas'] = entry['seg_areas'][indexes]
+                cropped_entry['is_crowd'] = entry['is_crowd'][indexes]
+                cropped_entry['max_overlaps'] = entry['max_overlaps'][indexes]
+                cropped_entry['box_to_gt_ind_map'] = np.array(range(len(indexes))).astype(np.int32)
+                cropped_entry['gt_overlaps'] = entry['gt_overlaps'][indexes]
+                cropped_entry['id'] = id
+                id += 1
+                #cropped_entry['segms'] = segm_utils.crop_segms(
+                    #entry['segms'], entry['height'], entry['width']
+                #)
+                if dataset.keypoints is not None:
+                    cropped_entry['gt_keypoints'] = keypoint_utils.crop_keypoints(
+                        dataset.keypoints, dataset.keypoint_crop_map,
+                        entry['gt_keypoints'], entry['width']
+                    )
+            dont_copy = ('boxes', 'segms', 'gt_keypoints', 'cropped', 'width', 
+                         'height', 'gt_classes', 'is_crowd', 'max_overlaps', 'box_to_gt_ind_map', 
+                         'gt_overlaps', 'id', 'seg_areas', 'max_classes')
+            for k, v in entry.items():
+                if k not in dont_copy:
+                    cropped_entry[k] = v
+            cropped_entry['cropped'] = [0] * (crop_size ** 2)
+            cropped_entry['cropped'][i] = 1
+            if len(cropped_entry['boxes']) > 0:
+                cropped_roidb.append(cropped_entry)
+    roidb.extend(cropped_roidb)
 
 
 def filter_for_training(roidb):
@@ -200,3 +269,8 @@ def _compute_and_log_stats(roidb):
     logger.debug(
         '{:s}: {:d}'.format(
             'total'.rjust(char_len), np.sum(gt_hist)))
+
+def _box_in_cropped_image(box, image):
+    point_min = box[0] > image[0] and box[1] > image[1]
+    point_max = box[2] < image[2] and box[2] < image[3]
+    return point_min and point_max
