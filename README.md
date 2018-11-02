@@ -45,7 +45,7 @@ Additional backbone architectures may be easily implemented. For more details ab
 - 9/2018: Support deconvolutional layer in resnet and resnext with FPN
 - 9/2018: Support crop data augmentation
 - 9/2018: Support rfcn with rpn rather than extra box proposals. and rfcn could be used in fpn
-- 11/2018: Support cascade rcnn with fpn
+- 11/2018: Support cascade rcnn with fpn refered by https://github.com/zhaoweicai/Detectron-Cascade-RCNN
 - 11/2018: Support Hard Example Enhancement training strategy
 
 ## License
