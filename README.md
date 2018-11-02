@@ -41,10 +41,12 @@ Additional backbone architectures may be easily implemented. For more details ab
 - 8/2018: Support Image Classification, please refer to experiments/cfgs/e2e_classification_vgg16.yaml
 - 8/2018: Support custom attentional transition, only on resnet and resnext currently. See the paper https://arxiv.org/abs/1802.10419
 - 8/2018: Two new parameters in yaml file VOC_EVALUATOR and COCO_EVALUATOR to make sure the corresponding evaluators could be applied
-- 8/2018: Support More the state-of-the-art CNN backbones.
+- 8/2018: Support More the state-of-the-art CNN backbones. Inception, densenet, mobilenet, squeezenet
 - 9/2018: Support deconvolutional layer in resnet and resnext with FPN
 - 9/2018: Support crop data augmentation
-- 9/2018: Support rfcn without box proposals
+- 9/2018: Support rfcn with rpn rather than extra box proposals. and rfcn could be used in fpn
+- 11/2018: Support cascade rcnn with fpn
+- 11/2018: Support Hard Example Enhancement training strategy
 
 ## License
 
