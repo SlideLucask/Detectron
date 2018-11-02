@@ -37,6 +37,11 @@ def add_ResNet50_conv4_body(model):
 
 
 def add_ResNet50_conv5_body(model):
+    return add_ResNet_convX_body(model, (6, 4, 3, 3))
+    #return add_ResNet_convX_body(model, (3, 4, 6, 3))
+
+def add_ResNet50_org_conv5_body(model):
+    #return add_ResNet_convX_body(model, (6, 4, 3, 3))
     return add_ResNet_convX_body(model, (3, 4, 6, 3))
 
 
@@ -85,8 +90,11 @@ def add_stage(
             inplace_sum=i < n - 1
         )
         dim_in = dim_out
-    if cfg.MODEL.ATTENTIONAL_TRANSITION:
+    if cfg.MODEL.ATTENTIONAL_TRANSITION and not cfg.MODEL.CLASSIFICATION:
         blob_out = model.AttentionalTransition(blob_in, prefix, dim=dim_in)
+        return blob_out, dim_in
+    elif cfg.MODEL.ATTENTIONAL_TRANSITION and cfg.MODEL.CLASSIFICATION:
+        blob_out = model.ChannelAttentionalTransition(blob_in, prefix, dim=dim_in)
         return blob_out, dim_in
     else:
         return blob_in, dim_in

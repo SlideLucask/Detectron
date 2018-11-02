@@ -59,6 +59,15 @@ def add_fpn_ResNet50_conv5_body(model):
         model, ResNet.add_ResNet50_conv5_body, fpn_level_info_ResNet50_conv5
     )
 
+def add_fpn_ResNet50_AT_conv5_body(model):
+    return add_fpn_onto_conv_body(
+        model, ResNet.add_ResNet50_conv5_body, fpn_level_info_ResNet50_AT_conv5
+    )
+
+def add_fpn_ResNet50_org_conv5_body(model):
+    return add_fpn_onto_conv_body(
+        model, ResNet.add_ResNet50_org_conv5_body, fpn_level_info_ResNet50_org_conv5
+    )
 
 def add_fpn_ResNet50_conv5_P2only_body(model):
     return add_fpn_onto_conv_body(
@@ -139,6 +148,11 @@ def add_fpn_ZF_conv5_body(model):
 def add_fpn_Inception_v1_conv5_body(model):
     return add_fpn_onto_conv_body(
         model, Inception.add_Inception_v1_conv5_body, fpn_level_info_Inception_v1_conv5
+    )
+
+def add_fpn_Inception_v1_AT_conv5_body(model):
+    return add_fpn_onto_conv_body(
+        model, Inception.add_Inception_v1_conv5_body, fpn_level_info_Inception_v1_AT_conv5
     )
 
 def add_fpn_Inception_v4_conv5_body(model):
@@ -649,11 +663,25 @@ def fpn_level_info_ResNet50_conv5():
         spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
     )
 
+def fpn_level_info_ResNet50_org_conv5():
+    return FpnLevelInfo(
+        blobs=('res5_2_sum', 'res4_5_sum', 'res3_3_sum', 'res2_2_sum'),
+        dims=(2048, 1024, 512, 256),
+        spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
+    )
+
+def fpn_level_info_ResNet50_AT_conv5():
+    return FpnLevelInfo(
+        blobs=('res5', 'res4', 'res3', 'res2'),
+        dims=(2048, 1024, 512, 256),
+        spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
+    )
+
 def fpn_level_info_ResNet50D_conv5():
     return FpnLevelInfo(
-        blobs=('res5_2_sum', 'combine5', 'combine4', 'combine3'),
-        dims=(2048, 2048, 1024, 512),
-        spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
+        blobs=('res4_2_sum', 'res3_5_sum', 'res2_9_sum', 'res2_4_branch2c_bn'),
+        dims=(1024, 512, 256, 256),
+        spatial_scales=(1. / 16., 1. / 8., 1. / 4., 1. / 4.)
     )
 
 def fpn_level_info_ResNet101_conv5():
@@ -702,6 +730,13 @@ def fpn_level_info_ZF_conv5():
 def fpn_level_info_Inception_v1_conv5():
     return FpnLevelInfo(
         blobs=('inception_5b_output', 'inception_4e_output', 'inception_3b_output', 'conv2_norm2'),
+        dims=(1024, 832, 480, 192),
+        spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
+    )
+
+def fpn_level_info_Inception_v1_AT_conv5():
+    return FpnLevelInfo(
+        blobs=('inception_5b', 'inception_4e', 'inception_3b', 'conv2'),
         dims=(1024, 832, 480, 192),
         spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
     )

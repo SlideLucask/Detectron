@@ -25,6 +25,7 @@ import numpy as np
 import os
 import json
 import random
+import seaborn as sns
 
 import pycocotools.mask as mask_util
 
@@ -299,6 +300,14 @@ def vis_one_image(
     #mask_color_id = 0
     json_obj = {}
     shapes = []
+
+    #define multi color
+    colors = sns.hls_palette(len(get_coco_dataset()['classes'].items()), l=.3, s=1)
+    edge_color = {}
+    for i in range(len(get_coco_dataset()['classes'])-1):
+        edge_color[get_coco_dataset()['classes'][i+1]] = colors[i]
+
+
     for i in sorted_inds:
         bbox = boxes[i, :4]
         score = boxes[i, -1]
@@ -310,17 +319,17 @@ def vis_one_image(
             plt.Rectangle((bbox[0], bbox[1]),
                           bbox[2] - bbox[0],
                           bbox[3] - bbox[1],
-                          fill=False, edgecolor='g',
-                          linewidth=0.5, alpha=box_alpha))
+                          fill=False, edgecolor=edge_color[get_class_text_string(classes[i], score, dataset)],
+                          linewidth=2))
 
         if show_class:
             ax.text(
                 bbox[0], bbox[1] - 2,
                 get_class_string(classes[i], score, dataset),
-                fontsize=3,
+                fontsize=10,
                 family='serif',
                 bbox=dict(
-                    facecolor='g', alpha=0.4, pad=0, edgecolor='none'),
+                    facecolor=edge_color[get_class_text_string(classes[i], score, dataset)], alpha=0.4, pad=0, edgecolor='none'),
                 color='white')
 
         # show mask
@@ -345,7 +354,7 @@ def vis_one_image(
                 e.copy(), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
             for c in contour:
                 #c = c.flatten().tolist()
-                if len(c) > 16:
+                if len(c) > 320:
                     obj = {}
                     obj['points'] = []
                     obj['label'] = get_class_text_string(classes[i], score, dataset)
@@ -353,7 +362,7 @@ def vis_one_image(
                     obj['fill_color'] = None
                     length = len(c)
                     index = []
-                    interval = 10
+                    interval = 20
                     j=0
                     while len(index) != int(len(c)/interval):
                         index.append(range(len(c))[0+j*interval])

@@ -64,9 +64,18 @@ def train_model():
     #graph = net_drawer.GetPydotGraph(model.net.Proto().op, "mnist", rankdir="LR")
     #graph.write_png('graph.png')
 
-    for cur_iter in range(start_iter, cfg.SOLVER.MAX_ITER):
+    #max_iter = cfg.SOLVER.MAX_ITER if cfg.SOLVER.MAX_EPOCH == -1 else 10**8
+    #print(max_iter)
+
+    cur_iter = start_iter
+    #for cur_iter in range(start_iter, max_iter):
+    while True:
         training_stats.IterTic()
-        lr = model.UpdateWorkspaceLr(cur_iter, lr_policy.get_lr_at_iter(cur_iter))
+        if cfg.SOLVER.MAX_EPOCH == -1:
+            lr = model.UpdateWorkspaceLr(cur_iter, lr_policy.get_lr_at_iter(cur_iter))
+        else:
+            lr = model.UpdateWorkspaceLr(training_stats.cur_epoch, lr_policy.get_lr_at_epoch(training_stats))
+        
         workspace.RunNet(model.net.Proto().name)
         if cur_iter == start_iter:
             nu.print_net(model)
@@ -90,6 +99,14 @@ def train_model():
             model.roi_data_loader.shutdown()
             envu.exit_on_error()
 
+        if cfg.SOLVER.MAX_EPOCH == -1 and cur_iter == cfg.SOLVER.MAX_ITER:
+            break
+
+        if cfg.SOLVER.MAX_EPOCH != -1 and training_stats.cur_epoch == cfg.SOLVER.MAX_EPOCH + 1:
+            break
+
+        cur_iter += 1
+
     # Save the final model
     checkpoints['final'] = os.path.join(output_dir, 'model_final.pkl')
     nu.save_model_to_weights_file(checkpoints['final'], model)
@@ -105,7 +122,7 @@ def create_model():
     logger = logging.getLogger(__name__)
     start_iter = 0
     checkpoints = {}
-    output_dir = get_output_dir(cfg.TRAIN.DATASETS, training=True)
+    output_dir = get_output_dir(cfg.TRAIN.DATASETS,training=True)
     weights_file = cfg.TRAIN.WEIGHTS
     if cfg.TRAIN.AUTO_RESUME:
         # Check for the final model (indicates training already finished)

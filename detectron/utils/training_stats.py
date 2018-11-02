@@ -51,10 +51,13 @@ class TrainingStats(object):
             for key in model.losses + model.metrics
         }
         self.smoothed_total_loss = SmoothedValue(self.WIN_SZ)
+        self.cur_epoch_total_loss = []
+        self.last_epoch_mean_loss = 0
         self.smoothed_mb_qsize = SmoothedValue(self.WIN_SZ)
         self.iter_total_loss = np.nan
         self.iter_timer = Timer()
         self.model = model
+        self.cur_epoch = 0
 
     def IterTic(self):
         self.iter_timer.tic()
@@ -81,9 +84,16 @@ class TrainingStats(object):
         for i in range(len(self.model.roi_data_loader._cur_img)):
             self.model.roi_data_loader._cur_loss[self.model.roi_data_loader._cur_img[i]] = self.iter_total_loss
         self.smoothed_total_loss.AddValue(self.iter_total_loss)
+        self.cur_epoch_total_loss.append(self.iter_total_loss)
         self.smoothed_mb_qsize.AddValue(
             self.model.roi_data_loader._minibatch_queue.qsize()
         )
+        if self.model.roi_data_loader.next_epoch:
+            self.cur_epoch += 1
+            self.model.roi_data_loader.next_epoch = False
+            self.last_epoch_mean_loss = sum(self.cur_epoch_total_loss) / len(self.cur_epoch_total_loss)
+            self.cur_epoch_total_loss = []
+
 
     def LogIterStats(self, cur_iter, lr):
         """Log the tracked statistics."""
@@ -101,6 +111,7 @@ class TrainingStats(object):
         mem_usage = np.max(mem_stats['max_by_gpu'][:cfg.NUM_GPUS])
         stats = dict(
             iter=cur_iter,
+            epoch=self.cur_epoch,
             lr=float(lr),
             time=self.iter_timer.average_time,
             loss=self.smoothed_total_loss.GetMedianValue(),

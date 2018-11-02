@@ -32,10 +32,16 @@ from caffe2.python.modeling.parameter_info import ParameterTags
 from detectron.core.config import cfg
 from detectron.ops.collect_and_distribute_fpn_rpn_proposals \
     import CollectAndDistributeFpnRpnProposalsOp
+from detectron.ops.distribute_cascade_proposals import DistributeCascadeProposalsOp
 from detectron.ops.generate_proposal_labels import GenerateProposalLabelsOp
 from detectron.ops.generate_proposals import GenerateProposalsOp
+from detectron.ops.decode_bboxes import DecodeBBoxesOp
+from detectron.ops.bbox_accuracy import BBoxAccuracyOp
 import detectron.roi_data.fast_rcnn as fast_rcnn_roi_data
+import detectron.roi_data.cascade_rcnn as cascade_rcnn_roi_data
 import detectron.utils.c2 as c2_utils
+from detectron.utils.c2 import const_fill
+from detectron.utils.c2 import gauss_fill
 
 logger = logging.getLogger(__name__)
 
@@ -64,11 +70,13 @@ class DetectionModelHelper(cnn.CNNModelHelper):
         self.net.Proto().num_workers = cfg.NUM_GPUS * 4
         self.prev_use_cudnn = self.use_cudnn
         self.gn_params = []  # Param on this list are GroupNorm parameters
+        self.stage_params = {}  # Param on this list are updated with scalars
 
     def TrainableParams(self, gpu_id=-1):
         """Get the blob names for all trainable parameters, possibly filtered by
         GPU id.
         """
+        #model.params_to_grad.append()
         return [
             p for p in self.params
             if (
@@ -106,7 +114,7 @@ class DetectionModelHelper(cnn.CNNModelHelper):
 
     def DeconvolutionFusion(self, blob_in_dec, blob_in_org, blob_out, dim_dec, dim_org, method='EltwiseSUM'):
         # Add deconvolutional layer and fused with orginal layer
-        self.ConvTranspose(blob_in_dec, blob_in_dec + '_deconv', dim_dec, dim_dec, 2, pad=0, stride=2)
+        self.ConvTranspose(blob_in_dec, blob_in_dec + '_deconv', dim_dec, dim_dec, 4, pad=1, stride=2)
         self.Conv(blob_in_dec + '_deconv', blob_in_dec + '_deconv_conv', dim_dec, dim_dec, 3, pad=1, stride=1)
         self.AffineChannel(blob_in_dec + '_deconv_conv', blob_in_dec + '_deconv_conv', dim=dim_dec)
 
@@ -135,7 +143,7 @@ class DetectionModelHelper(cnn.CNNModelHelper):
 
     def DeconvolutionConcat(self, blob_in_dec, blob_in_org, blob_out, dim_dec, dim_org):
         # Add deconvolutional layer and fused with orginal layer
-        self.ConvTranspose(blob_in_dec, blob_in_dec + '_deconv', dim_dec, dim_dec, 2, pad=0, stride=2)
+        self.ConvTranspose(blob_in_dec, blob_in_dec + '_deconv', dim_dec, dim_dec, 4, pad=1, stride=2)
         self.Conv(blob_in_dec + '_deconv', blob_in_dec + '_deconv_conv', dim_dec, dim_org, 3, pad=1, stride=1)
         self.AffineChannel(blob_in_dec + '_deconv_conv', blob_in_dec + '_deconv_conv', dim=dim_org)
 
@@ -152,17 +160,36 @@ class DetectionModelHelper(cnn.CNNModelHelper):
         return self.Relu(blob_out, blob_out)
 
 
-    def AttentionalTransition(self, blob_in, blob_out, dim):
-        # Add attentional transition to the blob_in, the shapes of blob_in and blob_out are the same
+    def ChannelAttentionalTransition(self, blob_in, blob_out, dim):
+        # Add channel attentional transition to the blob_in, the shapes of blob_in and blob_out are the same
         prefix = blob_out
         self.AveragePool(blob_in, prefix+'_global_pool', global_pooling=True)
-        self.Conv(prefix+'_global_pool', prefix+'_at_conv1', dim, int(dim/2), 1)
-        self.Relu(prefix+'_at_conv1', prefix+'_at_conv1')
-        self.Conv(prefix+'_at_conv1', prefix+'_at_conv2', int(dim/2), dim, 1)
-        self.Sigmoid(prefix+'_at_conv2', prefix+'_at_factors')
+        self.Conv(prefix+'_global_pool', prefix+'_cat_conv1', dim, int(dim/2), 1)
+        self.Relu(prefix+'_cat_conv1', prefix+'_cat_conv1')
+        self.Conv(prefix+'_cat_conv1', prefix+'_cat_conv2', int(dim/2), dim, 1)
+        self.Sigmoid(prefix+'_cat_conv2', prefix+'_cat_factors')
         
-        return self.net.Mul([blob_in, prefix+'_at_factors'], blob_out, broadcast=1)
+        return self.net.Mul([blob_in, prefix+'_cat_factors'], blob_out, broadcast=1)
         #return self.net.Sum([blob_in, prefix+'_mul_factors'], blob_out)
+
+    def PositionAttentionalTransition(self, blob_in, blob_out, dim):
+        # Add channel attentional transition to the blob_in, the shapes of blob_in and blob_out are the same
+        prefix = blob_out
+        self.Conv(blob_in, prefix+'_channel_average', dim, dim, 1, pad=0, stride=1, no_bias=1)
+        self.Conv(prefix+'_channel_average', prefix+'_pat_conv1', dim, int(dim/2), 1, pad=0, stride=1, no_bias=1)
+        self.Relu(prefix+'_pat_conv1', prefix+'_pat_conv1')
+        self.Conv(prefix+'_pat_conv1', prefix+'_pat_conv2', int(dim/2), 1, 1, pad=0, stride=1, no_bias=1)
+        self.Sigmoid(prefix+'_pat_conv2', prefix+'_pat_factors')
+
+        return self.net.Mul([blob_in, prefix+'_pat_factors'], blob_out, broadcast=1)
+
+    def AttentionalTransition(self, blob_in, blob_out, dim):
+        # fuse two different attentional transition parallel
+        output_c = self.ChannelAttentionalTransition(blob_in, blob_out+'_c', dim)
+        output_p = self.PositionAttentionalTransition(blob_in, blob_out+'_p', dim)
+
+        return self.net.Sum([output_c, output_p], blob_out)
+
 
     def GenerateProposals(self, blobs_in, blobs_out, anchors, spatial_scale):
         """Op for generating RPN porposals.
@@ -285,6 +312,67 @@ class DetectionModelHelper(cnn.CNNModelHelper):
 
         return outputs
 
+    def DecodeBBoxes(self, blobs_in, blobs_out, bbox_reg_weights):
+        """Op for decoding bboxes. Only support class-agnostic bbox regression.
+        by Zhaowei Cai for Cascade R-CNN
+        blobs_in:
+          - 'bbox_pred_<j>': 2D tensor of shape (R, 4 * 2) of predicted deltas
+            for transformation previous boxes into next boxes, at stage j.
+          - 'rois_<j>': 2D tensor of shape (R, 5), for proposals where the
+            five columns encode [batch ind, x1, y1, x2, y2], at stage j.
+        If used during training, then the input blobs will also include:
+          [mapped_gt_boxes_<j>], which is used to remove redundant ground truth.
+        blobs_out:
+          - 'proposals_<j+1>': 2D tensor of shape (R, 5), for proposals where the
+            five columns encode [batch ind, x1, y1, x2, y2].
+        """
+        name = 'DecodeBBoxesOp:' + ','.join([str(b) for b in blobs_in])
+        self.net.Python(DecodeBBoxesOp(bbox_reg_weights).forward)(
+            blobs_in, blobs_out, name=name
+        )
+        return blobs_out
+
+    def DistributeCascadeProposals(self, stage):
+        """Distribute proposals to their appropriate FPN levels.
+        by Zhaowei Cai for Cascade R-CNN
+        Input blobs:
+          - proposals_<j> are the decoded proposals from stage j; see
+            documentation from DecodeBBoxes.
+        If used during training, then the input blobs will also include:
+          [roidb, im_info] (see GenerateProposalLabels).
+        Output blobs: [rois_fpn<min>, ..., rois_rpn<max>, rois,
+                       rois_idx_restore]
+          - rois_fpn<i> are the RPN proposals for FPN level i
+          - rois_idx_restore is a permutation on the concatenation of all
+            rois_fpn<i>, i=min...max, such that when applied the RPN RoIs are
+            restored to their original order in the input blobs.
+        If used during training, then the output blobs will also include:
+          [labels, bbox_targets, bbox_inside_weights, bbox_outside_weights,
+          mapped_gt_boxes].
+        """
+        stage_name = '_{}'.format(stage)
+
+        # Prepare input blobs
+        blobs_in = ['proposals' + stage_name]
+        if self.train:
+            blobs_in += ['roidb', 'im_info']
+        blobs_in = [core.ScopedBlobReference(b) for b in blobs_in]
+        name = 'DistributeCascadeProposalsOp:' + ','.join(
+            [str(b) for b in blobs_in]
+        )
+
+        # Prepare output blobs
+        blobs_out = cascade_rcnn_roi_data.get_cascade_rcnn_blob_names(
+            stage, is_training=self.train
+        )
+        blobs_out = [core.ScopedBlobReference(b) for b in blobs_out]
+
+        outputs = self.net.Python(
+            DistributeCascadeProposalsOp(self.train, stage).forward
+        )(blobs_in, blobs_out, name=name)
+
+        return outputs
+
     def DropoutIfTraining(self, blob_in, dropout_rate):
         """Add dropout to blob_in if the model is in training mode and
         dropout_rate is > 0."""
@@ -360,6 +448,158 @@ class DetectionModelHelper(cnn.CNNModelHelper):
         # Only return the first blob (the transformed features)
         return xform_out[0] if isinstance(xform_out, tuple) else xform_out
 
+    def PSRoIPoolF(
+        self,
+        blobs_in,
+        blob_out_cls,
+        blob_out_bbox,
+        blob_rois='rois',
+        resolution=7,
+        spatial_scale=1. / 16.,
+        sampling_ratio=0,
+        dim_reduce=1024,
+        dim_in=2048
+    ):
+        """Add the position-sensitive RoI pooling method. 
+
+        PSRoIPoolF abstracts away:
+          - Use of FPN or not
+          - Specifics of the transform method
+        """
+        if isinstance(blobs_in, list):
+            # FPN case: add PSRoIPool to each FPN level
+            k_max = cfg.FPN.ROI_MAX_LEVEL  # coarsest level of pyramid
+            k_min = cfg.FPN.ROI_MIN_LEVEL  # finest level of pyramid
+            assert len(blobs_in) == k_max - k_min + 1
+            bl_out_cls_list = []
+            bl_out_bbox_list = []
+            for lvl in range(k_min, k_max + 1):
+                bl_in = blobs_in[k_max - lvl]  # blobs_in is in reversed order
+                sc = spatial_scale[k_max - lvl]  # in reversed order
+                bl_rois = blob_rois + '_fpn' + str(lvl)
+                bl_out_cls = blob_out_cls + '_fpn' + str(lvl)
+                bl_out_cls_list.append(bl_out_cls)
+                bl_out_bbox = blob_out_bbox + '_fpn' + str(lvl)
+                bl_out_bbox_list.append(bl_out_bbox)
+                # FPN with RFCN do not need dim reduce
+                # Classification conv
+                conv_cls = self.Conv(
+                    bl_in, 
+                    'conv_cls_fpn'+str(lvl), 
+                    cfg.FPN.DIM, 
+                    self.num_classes * cfg.RFCN.PS_GRID_SIZE**2, 
+                    kernel=1, 
+                    pad=0, 
+                    stride=1,
+                    weight_init=gauss_fill(0.01),
+                    bias_init=const_fill(0.0)
+                )
+                # Bounding-box regression conv
+                num_bbox_reg_classes = (
+                    2 if cfg.MODEL.CLS_AGNOSTIC_BBOX_REG else self.num_classes
+                )
+                conv_bbox = self.Conv(
+                    bl_in,
+                    'conv_bbox_pred_fpn'+str(lvl),
+                    cfg.FPN.DIM,
+                    4 * num_bbox_reg_classes * cfg.RFCN.PS_GRID_SIZE**2,
+                    kernel=1,
+                    pad=0,
+                    stride=1,
+                    weight_init=gauss_fill(0.01),
+                    bias_init=const_fill(0.0),
+                )
+                # Classification PS RoI pooling
+                self.net.PSRoIPool(
+                    [conv_cls, bl_rois], [bl_out_cls, '_mapping_channel_cls_fpn'+str(lvl)],
+                    group_size=cfg.RFCN.PS_GRID_SIZE,
+                    output_dim=self.num_classes,
+                    spatial_scale=sc,
+                )
+                # Bbox regression PS RoI pooling
+                self.net.PSRoIPool(
+                    [conv_bbox, bl_rois], [bl_out_bbox, '_mapping_channel_bbox_fpn'+str(lvl)],
+                    group_size=cfg.RFCN.PS_GRID_SIZE,
+                    output_dim=4 * num_bbox_reg_classes,
+                    spatial_scale=sc,
+                )
+            # The pooled features from all levels are concatenated along the
+            # batch dimension into a single 4D tensor.
+            xform_shuffled_cls, _ = self.net.Concat(
+                bl_out_cls_list, [blob_out_cls + '_shuffled', '_concat_' + blob_out_cls],
+                axis=0
+            )
+            xform_shuffled_bbox, _ = self.net.Concat(
+                bl_out_bbox_list, [blob_out_bbox + '_shuffled', '_concat_' + blob_out_bbox],
+                axis=0
+            )
+            # Unshuffle to match rois from dataloader
+            restore_bl = blob_rois + '_idx_restore_int32'
+            xform_out_cls = self.net.BatchPermutation(
+                [xform_shuffled_cls, restore_bl], blob_out_cls
+            )
+            xform_out_bbox = self.net.BatchPermutation(
+                [xform_shuffled_bbox, restore_bl], blob_out_bbox
+            )
+        else:
+            # Single feature level
+            if dim_reduce is not None:
+                blob_in = self.Conv(
+                    blobs_in,
+                    'conv_dim_reduce',
+                    dim_in,
+                    dim_reduce,
+                    kernel=1,
+                    pad=0,
+                    stride=1,
+                    weight_init=gauss_fill(0.01),
+                    bias_init=const_fill(0.0)
+                )
+                blob_in = self.Relu(blob_in, blob_in)
+                dim_in = dim_reduce
+            # Classification conv
+            self.Conv(
+                blob_in,
+                'conv_cls',
+                dim_in,
+                self.num_classes * cfg.RFCN.PS_GRID_SIZE**2,
+                kernel=1,
+                pad=0,
+                stride=1,
+                weight_init=gauss_fill(0.01),
+                bias_init=const_fill(0.0)
+            )
+            # Bounding-box regression conv
+            num_bbox_reg_classes = (
+                2 if cfg.MODEL.CLS_AGNOSTIC_BBOX_REG else self.num_classes
+            )
+            self.Conv(
+                blob_in,
+                'conv_bbox_pred',
+                dim_in,
+                4 * num_bbox_reg_classes * cfg.RFCN.PS_GRID_SIZE**2,
+                kernel=1,
+                pad=0,
+                stride=1,
+                weight_init=gauss_fill(0.01),
+                bias_init=const_fill(0.0)
+            )
+            # Classification PS RoI pooling
+            xform_out_cls = self.net.PSRoIPool(
+                ['conv_cls', 'rois'], [blob_out_cls, '_mapping_channel_cls'],
+                group_size=cfg.RFCN.PS_GRID_SIZE,
+                output_dim=self.num_classes,
+                spatial_scale=spatial_scale
+            )
+            xform_out_bbox = self.net.PSRoIPool(
+                ['conv_bbox_pred', 'rois'], [blob_out_bbox, '_mapping_channel_bbox'],
+                group_size=cfg.RFCN.PS_GRID_SIZE,
+                output_dim=4 * num_bbox_reg_classes,
+                spatial_scale=spatial_scale
+            )
+        # Only return the first blob (the transformed features)
+        return xform_out_cls[0] if isinstance(xform_out_cls, tuple) else xform_out_cls, xform_out_bbox[0] if isinstance(xform_out_bbox, tuple) else xform_out_bbox
+
     def ConvShared(
         self,
         blob_in,
@@ -393,6 +633,38 @@ class DetectionModelHelper(cnn.CNNModelHelper):
 
         return self.net.Conv(
             blobs_in, blob_out, kernel=kernel, order=self.order, **kwargs
+        )
+
+    def FCShared(
+        self,
+        blob_in,
+        blob_out,
+        weight=None,
+        bias=None,
+        **kwargs
+    ):
+        """Add fc op that shares weights and/or biases with another fc op.
+        """
+        use_bias = (
+            False if ('no_bias' in kwargs and kwargs['no_bias']) else True
+        )
+
+        if self.use_cudnn:
+            kwargs['engine'] = 'CUDNN'
+            kwargs['exhaustive_search'] = self.cudnn_exhaustive_search
+            if self.ws_nbytes_limit:
+                kwargs['ws_nbytes_limit'] = self.ws_nbytes_limit
+
+        if use_bias:
+            blobs_in = [blob_in, weight, bias]
+        else:
+            blobs_in = [blob_in, weight]
+
+        if 'no_bias' in kwargs:
+            del kwargs['no_bias']
+
+        return self.net.FC(
+            blobs_in, blob_out, order=self.order, **kwargs
         )
 
     def BilinearInterpolation(
@@ -513,6 +785,45 @@ class DetectionModelHelper(cnn.CNNModelHelper):
         self.gn_params.append(self.params[-2])  # add gn's scale to list
         return blob_out
 
+    def SpatialGNShared(
+        self,
+        blob_in,
+        blob_out,
+        group_gn,
+        scale=None,
+        bias=None,
+        **kwargs
+    ):
+        """Add gn op that shares weights and/or biases with another gn op.
+        """
+        use_bias = (
+            False if ('no_bias' in kwargs and kwargs['no_bias']) else True
+        )
+
+        if self.use_cudnn:
+            kwargs['engine'] = 'CUDNN'
+            kwargs['exhaustive_search'] = self.cudnn_exhaustive_search
+            if self.ws_nbytes_limit:
+                kwargs['ws_nbytes_limit'] = self.ws_nbytes_limit
+
+        if use_bias:
+            blobs_in = [blob_in, scale, bias]
+        else:
+            blobs_in = [blob_in, scale]
+
+        blobs_out = [blob_out, blob_out + "_mean", blob_out + "_std"]
+
+        if 'no_bias' in kwargs:
+            del kwargs['no_bias']
+
+        kwargs['group'] = group_gn
+        kwargs['epsilon'] = cfg.GROUP_NORM.EPSILON
+
+        blob_outputs = self.net.GroupNorm(
+            blobs_in, blobs_out, **kwargs
+        )
+        return blob_outputs[0]
+
     def DisableCudnn(self):
         self.prev_use_cudnn = self.use_cudnn
         self.use_cudnn = False
@@ -533,10 +844,10 @@ class DetectionModelHelper(cnn.CNNModelHelper):
         # the GPU (both are float32), so exact comparision is ok
         if cur_lr != new_lr:
             ratio = _get_lr_change_ratio(cur_lr, new_lr)
-            if ratio > cfg.SOLVER.LOG_LR_CHANGE_THRESHOLD:
-                logger.info(
-                    'Changing learning rate {:.6f} -> {:.6f} at iter {:d}'.
-                    format(cur_lr, new_lr, cur_iter))
+            #if ratio > cfg.SOLVER.LOG_LR_CHANGE_THRESHOLD:
+                #logger.info(
+                    #'Changing learning rate {:.6f} -> {:.6f} at iter {:d}'.
+                    #format(cur_lr, new_lr, cur_iter))
             self._SetNewLr(cur_lr, new_lr)
         return new_lr
 
@@ -563,9 +874,9 @@ class DetectionModelHelper(cnn.CNNModelHelper):
         changed we should scale the update history V in order to make it
         compatible in scale with lr * grad.
         """
-        logger.info(
-            'Scaling update history by {:.6f} (new lr / old lr)'.
-            format(correction))
+        #logger.info(
+            #'Scaling update history by {:.6f} (new lr / old lr)'.
+            #format(correction))
         for i in range(cfg.NUM_GPUS):
             with c2_utils.CudaScope(i):
                 for param in self.TrainableParams(gpu_id=i):
@@ -575,6 +886,13 @@ class DetectionModelHelper(cnn.CNNModelHelper):
                     workspace.RunOperatorOnce(op)
 
     def GetLossScale(self):
+        """Allow a way to configure the loss scale dynamically.
+
+        This may be used in a distributed data parallel setting.
+        """
+        return 1.0 / cfg.NUM_GPUS
+
+    def GetAdaptiveLossScale(self):
         """Allow a way to configure the loss scale dynamically.
 
         This may be used in a distributed data parallel setting.
@@ -592,6 +910,83 @@ class DetectionModelHelper(cnn.CNNModelHelper):
         if not isinstance(metrics, list):
             metrics = [metrics]
         self.metrics = list(set(self.metrics + metrics))
+
+    def AddBBoxAccuracy(self, blobs_in, blobs_out, bbox_reg_weights):
+        """Op for bbox IoU accuracy, by Zhaowei Cai for Cascade R-CNN.
+        blobs_in: ['bbox_pred', 'rois', 'labels', 'mapped_gt_boxes']
+          - 'bbox_pred': 2D tensor of shape (R, 4 * C), predicted bbox deltas
+            for transformation previous boxes into next boxes.
+          - 'rois': 2D tensor of shape (R, 5), proposals where the
+            five columns encode [batch ind, x1, y1, x2, y2].
+          - 'labels': 2D tensor of shape (R, 1), classification labels to
+            identify fg rois.
+          - 'mapped_gt_boxes': 2D tensor of shape (R, 5), the corresponding gt
+            boxes where the five columns encode [x1, y1, x2, y2, IoU].
+        blobs_out:
+          - 'bbox_iou': mean IoU after bbox prediction.
+          - 'bbox_iou_pre': mean IoU before bbox prediction.
+        """
+        name = 'BBoxAccuracyOp:' + ','.join([str(b) for b in blobs_in])
+        self.net.Python(BBoxAccuracyOp(bbox_reg_weights).forward)(
+            blobs_in, blobs_out, name=name
+        )
+        return blobs_out
+
+    def InitializeLossWeight(self):
+        weight_cls1 = np.array([0.5]).astype(np.float32)
+        weight_cls2 = np.array([0.5]).astype(np.float32)
+        weight_bbox1 = np.array([0.5]).astype(np.float32)
+        weight_bbox2 = np.array([0.5]).astype(np.float32)
+        for i in range(cfg.NUM_GPUS):
+            with c2_utils.CudaScope(i):
+                workspace.FeedBlob(
+                    'gpu_{}/weight_cls1'.format(i), weight_cls1)
+                workspace.FeedBlob(
+                    'gpu_{}/weight_cls2'.format(i), weight_cls2)
+                workspace.FeedBlob(
+                    'gpu_{}/weight_bbox1'.format(i), weight_bbox1)
+                workspace.FeedBlob(
+                    'gpu_{}/weight_bbox2'.format(i), weight_bbox2)
+
+
+    def UpdateLossWeight(self):
+        scale = 10
+        # set bias for constraint for weight >0
+        bias = 0.5
+        lr = workspace.FetchBlob('gpu_0/lr').astype(np.float32)
+        weight_cls1 = workspace.FetchBlob('gpu_0/weight_cls1').astype(np.float32)
+        weight_cls2 = workspace.FetchBlob('gpu_0/weight_cls2').astype(np.float32)
+        #loss_cls1 = workspace.FetchBlob('gpu_0/loss_cls1')
+        #loss_cls2 = workspace.FetchBlob('gpu_0/loss_cls2')
+        weight_cls1 -= lr * scale * workspace.FetchBlob('gpu_0/weight_cls1_grad') + bias
+        weight_cls2 -= lr * scale * workspace.FetchBlob('gpu_0/weight_cls2_grad') + bias
+        weight_cls1 = weight_cls1 / (weight_cls1 + weight_cls2)
+        weight_cls2 = weight_cls2 / (weight_cls1 + weight_cls2)
+
+        weight_bbox1 = workspace.FetchBlob('gpu_0/weight_bbox1').astype(np.float32)
+        weight_bbox2 = workspace.FetchBlob('gpu_0/weight_bbox2').astype(np.float32)
+        #loss_bbox1 = workspace.FetchBlob('gpu_0/loss_bbox1')
+        #loss_bbox2 = workspace.FetchBlob('gpu_0/loss_bbox2')
+        weight_bbox1 -= lr * scale * workspace.FetchBlob('gpu_0/weight_bbox1_grad') + bias
+        weight_bbox2 -= lr * scale * workspace.FetchBlob('gpu_0/weight_bbox2_grad') + bias
+        weight_bbox1 = weight_bbox1 / (weight_bbox1 + weight_bbox2)
+        weight_bbox2 = weight_bbox2 / (weight_bbox1 + weight_bbox2)
+
+
+        for i in range(cfg.NUM_GPUS):
+            with c2_utils.CudaScope(i):
+                workspace.FeedBlob(
+                    'gpu_{}/weight_cls1'.format(i), weight_cls1)
+                workspace.FeedBlob(
+                    'gpu_{}/weight_cls2'.format(i), weight_cls2)
+                workspace.FeedBlob(
+                    'gpu_{}/weight_bbox1'.format(i), weight_bbox1)
+                workspace.FeedBlob(
+                    'gpu_{}/weight_bbox2'.format(i), weight_bbox2)
+
+
+        #workspace.FeedBlob('gpu_0/weight1',weight1)
+        #workspace.FeedBlob('gpu_0/weight2',weight2)
 
 
 def _get_lr_change_ratio(cur_lr, new_lr):

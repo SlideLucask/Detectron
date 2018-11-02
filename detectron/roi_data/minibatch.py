@@ -119,10 +119,10 @@ def _get_image_blob(roidb):
             height = im.shape[0]
             crop_size = cfg.TRAIN.CROPPED_SIZE
             crop_index = roidb[i]['cropped'].index(1)
-            xmin = int(height / crop_size * int(round(i/2)))
-            xmax = int(xmin+height / crop_size)
-            ymin = int(width / crop_size * int(round(i/2)))
-            ymax = int(ymin + width / crop_size)
+            xmin = int(height / crop_size * int(round(crop_index/2)))
+            xmax = int(xmin + (height / crop_size))
+            ymin = int(width / crop_size * int(round(crop_index/2)))
+            ymax = int(ymin + (width / crop_size))
             im = im[xmin:xmax, ymin:ymax,:]
         target_size = cfg.TRAIN.SCALES[scale_inds[i]]
         im, im_scale = blob_utils.prep_im_for_blob(

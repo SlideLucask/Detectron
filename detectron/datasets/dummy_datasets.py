@@ -29,8 +29,31 @@ def get_coco_dataset():
     """A dummy COCO dataset that includes only the 'classes' field."""
     ds = AttrDict()
     classes = [
-        '__background__', '1', '2'
+        '__background__', '11111', '11121', '11122', '11123', '11131', '1'
     ]
+    ds.classes = {i: name for i, name in enumerate(classes)}
+    return ds
+
+def get_voc_dataset():
+    ds = AttrDict()
+    classes = [
+        '__background__', 'aeroplane', 'bicycle', 'bird', 'boat',
+           'bottle', 'bus', 'car', 'cat', 'chair',
+           'cow', 'diningtable', 'dog', 'horse',
+           'motorbike', 'person', 'pottedplant',
+           'sheep', 'sofa', 'train', 'tvmonitor'
+    ]
+    ds.classes = {i: name for i, name in enumerate(classes)}
+    return ds
+
+def get_classification_dataset():
+    """A dummy COCO dataset that includes only the 'classes' field."""
+    ds = AttrDict()
+    classes = [
+        '__background__'
+    ]
+    for i in range(61):
+        classes.append(str(i))
     ds.classes = {i: name for i, name in enumerate(classes)}
     return ds
 

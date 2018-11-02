@@ -93,8 +93,14 @@ def add_single_gpu_param_update_ops(model, gpu_id):
     lr = model.param_init_net.ConstantFill(
         [], 'lr', shape=[1], value=0.0
     )
+    lr_weight = model.param_init_net.ConstantFill(
+        [], 'lr_weight', shape=[1], value=0.00001
+    )
     one = model.param_init_net.ConstantFill(
         [], 'one', shape=[1], value=1.0
+    )
+    zero = model.param_init_net.ConstantFill(
+        [], 'zero', shape=[1], value=0.1
     )
     wd = model.param_init_net.ConstantFill(
         [], 'wd', shape=[1], value=cfg.SOLVER.WEIGHT_DECAY
@@ -103,6 +109,18 @@ def add_single_gpu_param_update_ops(model, gpu_id):
     wd_gn = model.param_init_net.ConstantFill(
         [], 'wd_gn', shape=[1], value=cfg.SOLVER.WEIGHT_DECAY_GN
     )
+    weight_cls1 = model.param_init_net.ConstantFill(
+        [], 'weight_cls1', shape=[1], value=0.5
+    )
+    weight_cls2 = model.param_init_net.ConstantFill(
+        [], 'weight_cls2', shape=[1], value=0.5
+    )
+    weight_bbox1 = model.param_init_net.ConstantFill(
+        [], 'weight_bbox1', shape=[1], value=0.5
+    )
+    weight_bbox2 = model.param_init_net.ConstantFill(
+        [], 'weight_bbox2', shape=[1], value=0.5
+    )
     for param in model.TrainableParams(gpu_id=gpu_id):
         logger.debug('param ' + str(param) + ' will be updated')
         param_grad = model.param_to_grad[param]
@@ -110,6 +128,16 @@ def add_single_gpu_param_update_ops(model, gpu_id):
         param_momentum = model.param_init_net.ConstantFill(
             [param], param + '_momentum', value=0.0
         )
+        # rescale the weights of stage heads Cascade R-CNN
+        # by Zhaowei Cai for Cascade R-CNN
+        if cfg.MODEL.CASCADE_ON and cfg.CASCADE_RCNN.SCALE_LOSS:
+            for stage_str, stage_params in model.stage_params.items():
+                stage = int(stage_str)
+                scalar = 1.0 / cfg.CASCADE_RCNN.STAGE_WEIGHTS[stage - 1]
+                if param in stage_params:
+                    model.Scale(param_grad, param_grad, scale=scalar)
+                    print("param name: {}, scalar: {}".format(param, scalar))
+
         if param in model.biases:
             # Special treatment for biases (mainly to match historical impl.
             # details):
@@ -128,3 +156,24 @@ def add_single_gpu_param_update_ops(model, gpu_id):
             [param_grad, param_momentum, param],
             momentum=cfg.SOLVER.MOMENTUM
         )
+    extra_params = ['weight_cls1', 'weight_cls2', 'weight_bbox1', 'weight_bbox2']
+    if cfg.MODEL.WEIGHTED_LOSS:
+        for param in extra_params:
+            param_grad = param+'_grad'
+            param_momentum = model.param_init_net.ConstantFill(
+                [param], param + '_momentum', value=0.0
+            )
+            model.net.MomentumSGDUpdate(
+                [param_grad, param_momentum, lr_weight, param],
+                [param_grad, param_momentum, param],
+                momentum=cfg.SOLVER.MOMENTUM
+            )
+
+            model.Max([param, zero], param)
+        model.Sum(['weight_cls1', 'weight_cls2'], 'weight_cls_sum')
+        model.Div(['weight_cls1','weight_cls_sum'], 'weight_cls1')
+        model.Div(['weight_cls2','weight_cls_sum'], 'weight_cls2')
+        model.Sum(['weight_bbox1', 'weight_bbox2'], 'weight_bbox_sum')
+        model.Div(['weight_bbox1','weight_bbox_sum'], 'weight_bbox1')
+        model.Div(['weight_bbox2','weight_bbox_sum'], 'weight_bbox2')
+

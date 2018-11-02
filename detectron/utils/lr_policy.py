@@ -30,7 +30,7 @@ def get_lr_at_iter(it):
     settings.
     """
     lr = get_lr_func()(it)
-    if it < cfg.SOLVER.WARM_UP_ITERS:
+    if it < cfg.SOLVER.WARM_UP_ITERS and cfg.SOLVER.MAX_EPOCH == -1:
         method = cfg.SOLVER.WARM_UP_METHOD
         if method == 'constant':
             warmup_factor = cfg.SOLVER.WARM_UP_FACTOR
@@ -41,6 +41,16 @@ def get_lr_at_iter(it):
             raise KeyError('Unknown SOLVER.WARM_UP_METHOD: {}'.format(method))
         lr *= warmup_factor
     return np.float32(lr)
+
+def get_lr_at_epoch(training_stats):
+    lr = get_lr_func()(training_stats.cur_epoch)
+    if not cfg.TRAIN.ENHANCE_STRATEGY or training_stats.last_epoch_mean_loss == 0:
+        return np.float32(lr)
+    else:
+        weight = training_stats.iter_total_loss / training_stats.last_epoch_mean_loss
+        lr_weighted = lr * (1 + weight)
+        #print(lr_weighted)
+        return np.float32(lr_weighted)
 
 
 # ---------------------------------------------------------------------------- #

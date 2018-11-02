@@ -5,6 +5,10 @@ from __future__ import unicode_literals
 
 from detectron.core.config import cfg
 
+# ------------------------------------------------------------------------------
+# Inception-v1
+# ------------------------------------------------------------------------------
+
 def add_Inception_v1_conv5_body(model):
     # stem
     model.Conv('data', 'conv1_7x7_s2', 3, 64, 7, pad=3, stride=2)
@@ -16,7 +20,11 @@ def add_Inception_v1_conv5_body(model):
     model.Conv('conv2_3x3_reduce', 'conv2_3x3', 64, 192, kernel=3, pad=1)
     model.Relu('conv2_3x3', 'conv2_3x3')
     model.LRN('conv2_3x3', 'conv2_norm2', size=5, alpha=0.0001, beta=0.75)
-    model.MaxPool('conv2_norm2', 'pool2_3x3_s2', kernel=3, pad=0, stride=2)
+    if cfg.MODEL.ATTENTIONAL_TRANSITION:
+        model.ChannelAttentionalTransition('conv2_norm2', 'conv2', dim=192)
+        model.MaxPool('conv2', 'pool2_3x3_s2', kernel=3, pad=0, stride=2)
+    else:
+        model.MaxPool('conv2_norm2', 'pool2_3x3_s2', kernel=3, pad=0, stride=2)
     
     # Inception 3a module, output dim 256, spatial_scale 1. / 8.
     model.Conv('pool2_3x3_s2', 'inception_3a_1x1', 192, 64, 1)
@@ -58,10 +66,14 @@ def add_Inception_v1_conv5_body(model):
     model.Relu('inception_3b_pool_proj', 'inception_3b_pool_proj')
 
     model.Concat(['inception_3b_1x1', 'inception_3b_3x3', 'inception_3b_5x5', 'inception_3b_pool_proj'], 'inception_3b_output')
+    if cfg.MODEL.ATTENTIONAL_TRANSITION:
+        model.ChannelAttentionalTransition('inception_3b_output', 'inception_3b', dim=480)
+        model.MaxPool('inception_3b', 'pool3_3x3_s2', kernel=3, pad=0, stride=2)
 
 
     # Inception 4a module, output dim 512, spatial_scale 1. / 16.
-    model.MaxPool('inception_3b_output', 'pool3_3x3_s2', kernel=3, pad=0, stride=2)
+    else:
+        model.MaxPool('inception_3b_output', 'pool3_3x3_s2', kernel=3, pad=0, stride=2)
     model.Conv('pool3_3x3_s2', 'inception_4a_1x1', 128+192+96+64, 192, 1)
     model.Relu('inception_4a_1x1', 'inception_4a_1x1')
 
@@ -164,10 +176,14 @@ def add_Inception_v1_conv5_body(model):
     model.Relu('inception_4e_pool_proj', 'inception_4e_pool_proj')
 
     model.Concat(['inception_4e_1x1', 'inception_4e_3x3', 'inception_4e_5x5', 'inception_4e_pool_proj'], 'inception_4e_output')
+    if cfg.MODEL.ATTENTIONAL_TRANSITION:
+        model.ChannelAttentionalTransition('inception_4e_output', 'inception_4e', dim=832)
+        model.MaxPool('inception_4e', 'pool4_3x3_s2', kernel=3, pad=0, stride=2)
 
 
     # Inception 5a module
-    model.MaxPool('inception_4e_output', 'pool4_3x3_s2', kernel=3, pad=0, stride=2)
+    else:
+        model.MaxPool('inception_4e_output', 'pool4_3x3_s2', kernel=3, pad=0, stride=2)
     model.Conv('pool4_3x3_s2', 'inception_5a_1x1', 256+320+128+128, 256, 1)
     model.Relu('inception_5a_1x1', 'inception_5a_1x1')
 
@@ -207,7 +223,13 @@ def add_Inception_v1_conv5_body(model):
     model.Relu('inception_5b_pool_proj', 'inception_5b_pool_proj')
 
     blob_out = model.Concat(['inception_5b_1x1', 'inception_5b_3x3', 'inception_5b_5x5', 'inception_5b_pool_proj'], 'inception_5b_output')
+    if cfg.MODEL.ATTENTIONAL_TRANSITION:
+        blob_out = model.ChannelAttentionalTransition('inception_5b_output', 'inception_5b', dim=1024)
     return blob_out, 1024, 1. / 32.
+
+# ------------------------------------------------------------------------------
+# Inception-v4
+# ------------------------------------------------------------------------------
 
 def add_Inception_v4_conv5_body(model):
     # stem 1
@@ -425,6 +447,9 @@ def add_Inception_v4_c_modules(model, blob_in, blob_out, num):
 
     model.Concat(['inception_c'+num+'_1x1_2', 'inception_c'+num+'_1x3', 'inception_c'+num+'_3x1', 'inception_c'+num+'_1x3_3', 'inception_c'+num+'_3x1_3', 'inception_c'+num+'_1x1'], blob_out)
 
+# ------------------------------------------------------------------------------
+# Inception-ResNet-v2
+# ------------------------------------------------------------------------------
 
 def add_Inception_ResNet_v2_conv5_body(model):
     #stem conv 1
